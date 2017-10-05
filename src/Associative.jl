@@ -6,32 +6,57 @@ function setindex!(::Assoc{I, T}, ::T, ::I) where {I, T}
     error("`setindex` not defined for $(typeof(a))")
 end
 
+struct IndexDirect <: IndexStyle; end
+struct IndexToken <: IndexStyle; end
+IndexStyle(::Assoc) = IndexDirect()
+
 # Implement this interface:
 #    - `indices(::Assoc)`
 #    - `getindex(::Assoc{I}, ::I) where I`
 #    - `setindex!(::Assoc{I, T}, ::T, ::I) where I` (optional)
+#    - `Base.IndexStyle(::Assoc)` -> `IndexDirect` or `IndexToken`
+#      (if `IndexToken`, implement `gettokenindex` and `gettokenvalue`)
 #
 # Get for free:
 #    - `indextype`, `eltype`
-#    - `pairs` iterates index=>value `Pair`s
+#    - `pairs` - iterates index=>value `Pair`s
 #    - `getindex(::Assoc{I,T}, ::Assoc{K2, I})` returning an Assoc{K2,T}
 #    - similarly for `setindex!`
 #    - length, iteration, etc...
+#    - similar
+#
+# TODO: 
+#    - view (same indexing behavior as `getindex`)
+#    - map (values, preserves indices)
+#    - filter (preserves a subset of indices)
+#    - SAC.jl functions ?
 
 indextype(::Assoc{I}) where {I} = I
 indextype(::Type{<:Assoc{I}}) where {I} = I
 eltype(::Assoc{<:Any, T}) where {T} = T
 eltype(::Type{<:Assoc{<:Any, T}}) where {T} = T
 
-pairs(a::Assoc) = zip(indices(a), a)
+pairs(a::Assoc) = zip(indices(a), a) # TODO should be an indexable collection such that `pairs(a)[i] = (i => a[i])`. Then can e.g. `map((ind, val) -> ..., pairs(a))`.
 
 length(a::Assoc) = length(indices(a))
-start(a::Assoc) = start(indices(a))
-@propagate_inbounds function next(a::Assoc, i)
+
+start(a::Assoc) = _start(IndexStyle(a), a)
+_start(::IndexDirect, a::Assoc) = start(indices(a))
+_start(::IndexToken, a::Assoc) = start(tokens(a)) #?
+
+@propagate_inbounds next(a::Assoc, i) = _next(IndexStyle(a), a, i)
+@propagate_inbounds function _next(::IndexDirect, a::Assoc, i)
     (j, i2) = next(indices(a), i)
     return (a[j], i2)
 end
-done(a::Assoc, i) = done(indices(a), i)
+@propagate_inbounds function _next(::IndexToken, a::Assoc, i)
+    (j, i2) = next(tokens(a), i)
+    return (gettokenvalue(a, j), i2)
+end
+
+done(a::Assoc, i) = _done(IndexStyle(a), a, i)
+_done(::IndexDirect, a::Assoc, i) = done(indices(a), i)
+_done(::IndexToken, a::Assoc, i) = done(tokens(a), i)
 
 @propagate_inbounds function getindex(a::Assoc, inds::Assoc)
     out = similar(a, indices(inds))
