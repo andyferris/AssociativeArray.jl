@@ -19,7 +19,7 @@ IndexStyle(::Assoc) = IndexDirect()
 #
 # Get for free:
 #    - `indextype`, `eltype`
-#    - `pairs` - iterates index=>value `Pair`s
+#    - `pairs` - iterates index=>value `Pair`s (also indexible)
 #    - `getindex(::Assoc{I,T}, ::Assoc{K2, I})` returning an Assoc{K2,T}
 #    - similarly for `setindex!`
 #    - length, iteration, etc...
@@ -36,7 +36,26 @@ indextype(::Type{<:Assoc{I}}) where {I} = I
 eltype(::Assoc{<:Any, T}) where {T} = T
 eltype(::Type{<:Assoc{<:Any, T}}) where {T} = T
 
-pairs(a::Assoc) = zip(indices(a), a) # TODO should be an indexable collection such that `pairs(a)[i] = (i => a[i])`. Then can e.g. `map((ind, val) -> ..., pairs(a))`.
+"""
+    Pairs(a::Assoc)
+
+Returns a new `Assoc` with the same indices as `a`, where each value is now a `Pair` of
+the index and value.
+"""
+struct Pairs{I, T, A <: Assoc{I, T}} <: Assoc{I, Pair{I, T}}
+    a::A
+end
+Pairs(a::Assoc{I,T}) where {I, T} = Pairs{I, T, typeof(a)}(a)
+
+indices(p::Pairs) = indices(p.a)
+IndexStyle(p::Pairs) = IndexStyle(p.a)
+@propagate_inbounds getindex(p::Pairs{I}, i::I) where {I} = (i => p.a[i])
+@propagate_inbounds getindex(p::Pairs{<:CartesianIndex}, i::Int) = (i => p.a[i])
+tokens(p::Pairs) = tokens(p.a)
+gettokenindex(p::Pairs, t) = gettokenindex(p.a, t)
+gettokenvalue(p::Pairs, t) = (gettokenindex(p.a, t) => gettokenvalue(p.a, t))
+
+pairs(a::Assoc) = Pairs(a)
 
 length(a::Assoc) = length(indices(a))
 
@@ -101,31 +120,23 @@ similar(a::Assoc, dims::Union{Integer, AbstractUnitRange}...) = similar(a, eltyp
 empty(a::Assoc) = empty(a, indextype(a), eltype(a))
 empty(a::Assoc, ::Type{T}) where {T} = empty(a, indextype(a), T)
 
-# The "default" Associative (a Dict)
-struct Dic{I,T} <: Assoc{I, T}
-    d::Dict{I,T}
-end
-
-indices(d::Dic) = keys(d.d)
-getindex(d::Dic{I}, i::I) where {I} = d.d[i]
-@propagate_inbounds function setindex!(d::Dic{I,T}, v::T, i::I) where {I, T}
-    d.d[i] = v
-    return v
-end
-
-# This is a hack to get `similar` to work at all (probably not necessary with some more
-# work / a new inner constructor for `Dict`)
-default(::Type{T}) where {T} = isbits(T) ? Ref{T}()[] : zero(T)
-default(::Type{String}) = ""
-default(::Type{Array{T, N}}) where {T, N} = Array{T, N}()
-
-# The default `similar` returns a `Dic`
-function similar(::Assoc, ::Type{T}, inds) where {T}
-    d = Dict{eltype(inds), T}()
-    for i in inds
-        d[i] = default(T)
+# A couple of basic methods for now:
+function Base.:(==)(a::Assoc, b::Assoc)
+    if !issetequal(a, b)
+        return false
     end
-    return Dic(d)
+
+    for i in indices(a)
+        if a[i] != b[i]
+            return false
+        end
+    end
+    return true
 end
 
-empty(::Assoc, ::Type{I}, ::Type{T}) where {T, I} = Dic{I,T}(Dict{I,T}())
+function Base.map(f, a::Assoc)
+    out = similar(a, Base.promote_op(f, eltype(a)))
+    for i in indices(a)
+        @inbounds out[i] = f(a[i])
+    end
+end
