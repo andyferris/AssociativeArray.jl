@@ -11,7 +11,7 @@ This package attempts to demonstrate that we can extend some of the (APL-inspire
 indexing `AbstractArray`s in Julia, to other `Associative`s.
 
 To acheive this, I have created my own types `Assoc`, `Dic`, `AbstractArr` and `Arr` to
-"mock" the 2 most common interfaces and 2 most common types in `Base`. I have also made
+"mock" these common container interfaces/types in `Base`. I have also made
 `AbstractArr` a subtype of `Assoc`; however this detail is not super important.
 
 The important thing is that now:
@@ -28,8 +28,8 @@ Some slightly interesting consequences:
    programming.
  * I propose a new `empty` function for creating empty dictionaries and vectors. `similar`
    would always preserve the indices of a dictionary (the values may be unintialized).
- * There is a path forward for multidimensional (Cartesian) dictionaries and structures,
-   including tables/dataframes, that use (a generalization of) the APL indexing rules.
+ * There is a path forward for multidimensional (Cartesian) dictionaries and structures, 
+   that use (a generalization of) the APL indexing rules.
 
 Notes:
 
